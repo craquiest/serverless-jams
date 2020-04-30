@@ -1,0 +1,81 @@
+org: <YOUR_ORG>
+app: <YOUR_APP>
+service: serverlessjams
+
+frameworkVersion: ">=1.53.0 <2.0.0"
+
+provider:
+  name: aws
+  runtime: python3.8
+  region: <YOUR_REGION>
+#  stage: dev
+  environment:
+    DYNAMODB_TABLE: serverlessjams-voteCounts
+    AUTH0_DOMAIN: ${file(./frontend/auth_config.json):domain}
+    AUTH0_API_ID: ${file(./frontend/auth_config.json):audience}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Scan 
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem 
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+
+
+functions:
+  auth: 
+    handler: backend/auth.handler
+  recordSongVote:
+    handler: backend/record_song_vote.handler
+    events:
+      - http:
+          path: song/vote
+          method: post
+          authorizer: 
+            name: auth
+          cors: true
+  getSongVoteCount:
+    handler: backend/get_song_vote_counts.handler
+    events:
+      - http:
+          path: votes
+          method: get 
+          cors: true
+
+resources:
+  Resources:
+    SongsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+        AttributeDefinitions:
+          - AttributeName: songName
+            AttributeType: S
+        KeySchema:
+          - AttributeName: songName
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+#  Outputs:
+#     NewOutput:
+#       Description: "Description for the output"
+#       Value: "Some output value"
+
+plugins:
+  - serverless-finch
+  - serverless-python-requirements
+
+custom:
+  client:
+    bucketName: <YOUR_DOMAIN>
+    distributionFolder: frontend
+    errorDocument: index.html
+  # pythonRequirements:
+  #   dockerizePip: non-linux
+
+package: 
+  exclude: 
+    - node_modules/**
+    - frontend/**
+    - package-lock.json
